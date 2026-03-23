@@ -20,7 +20,8 @@ data class TranslationState(
     val context: String = "",
     val result: TranslationResult = TranslationResult(""),
     val isSaving: Boolean = false,
-    val isSaved: Boolean = false
+    val isSaved: Boolean = false,
+    val sourceWord: String? = null // Store the original word if a sentence was translated
 )
 
 data class ReaderUiState(
@@ -55,6 +56,24 @@ class ReaderViewModel(private val repo: WordRepository) : ViewModel() {
         }
     }
 
+    fun onSentenceLongPressed(sentence: String, originalWord: String) {
+        _uiState.update { it.copy(isTranslating = true, selectedWord = null) }
+        viewModelScope.launch {
+            val result = TranslationService.translate(sentence, "")
+            _uiState.update {
+                it.copy(
+                    isTranslating = false,
+                    selectedWord = TranslationState(
+                        word = sentence,
+                        context = "",
+                        result = result,
+                        sourceWord = originalWord
+                    )
+                )
+            }
+        }
+    }
+
     fun dismissTranslation() {
         _uiState.update { it.copy(selectedWord = null, isTranslating = false) }
     }
@@ -62,8 +81,18 @@ class ReaderViewModel(private val repo: WordRepository) : ViewModel() {
     fun saveToFlashcards() {
         val state = _uiState.value.selectedWord ?: return
         _uiState.update { it.copy(selectedWord = state.copy(isSaving = true)) }
+        
+        // Bold the word if it's a sentence translation
+        val frontText = if (state.sourceWord != null && state.word.contains(state.sourceWord, ignoreCase = true)) {
+            // Simple replacement to bold the specific word in the sentence for the flashcard
+            val regex = Regex("(${Regex.escape(state.sourceWord)})", RegexOption.IGNORE_CASE)
+            state.word.replace(regex, "**$1**")
+        } else {
+            "**${state.word}**" // Bold the single word
+        }
+
         viewModelScope.launch {
-            repo.saveWordAndCreateCard(state.word, state.context, state.result.translation)
+            repo.saveWordAndCreateCard(state.word, state.context, state.result.translation, frontOverride = frontText)
             _uiState.update { it.copy(selectedWord = state.copy(isSaving = false, isSaved = true)) }
         }
     }

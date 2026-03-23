@@ -76,8 +76,8 @@ fun ReaderScreen(vm: ReaderViewModel) {
                         vm.onWordTapped(word, context)
                         scope.launch { sheetState.show() }
                     },
-                    onSentenceTap = { sentence ->
-                        vm.onWordTapped(sentence, "")
+                    onSentenceTap = { sentence, word ->
+                        vm.onSentenceLongPressed(sentence, word)
                         scope.launch { sheetState.show() }
                     }
                 )
@@ -297,7 +297,7 @@ private fun ClickableText(
     text: String,
     style: TextStyle,
     onWordTap: (word: String, sentence: String) -> Unit,
-    onSentenceTap: (sentence: String) -> Unit
+    onSentenceTap: (sentence: String, word: String) -> Unit
 ) {
     val paragraphs = text.split("\n")
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -327,7 +327,7 @@ private fun ClickableText(
                                 style = style,
                                 modifier = Modifier.combinedClickable(
                                     onClick = { onWordTap(token.clean, sentence) },
-                                    onLongClick = { onSentenceTap(sentence) }
+                                    onLongClick = { onSentenceTap(sentence, token.display) }
                                 )
                             )
                         } else {
@@ -336,7 +336,7 @@ private fun ClickableText(
                                 style = style,
                                 modifier = Modifier.combinedClickable(
                                     onClick = {},
-                                    onLongClick = { onSentenceTap(sentence) }
+                                    onLongClick = { onSentenceTap(sentence, "") }
                                 )
                             )
                         }

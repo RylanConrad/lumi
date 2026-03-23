@@ -15,7 +15,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.*
 import com.fjordflow.data.db.entity.FlashCardEntity
 import com.fjordflow.data.repository.ReviewQuality
@@ -175,8 +180,9 @@ private fun CardStack(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.padding(32.dp)
                         ) {
+                            val content = if (flipped) card.back else card.front
                             Text(
-                                text = if (flipped) card.back else card.front,
+                                text = parseMarkdownBold(content),
                                 style = if (flipped) MaterialTheme.typography.titleLarge
                                         else MaterialTheme.typography.headlineMedium,
                                 textAlign = TextAlign.Center,
@@ -239,6 +245,25 @@ private fun CardStack(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+/**
+ * Converts markdown-style **bold** text into an AnnotatedString with Bold FontWeight.
+ */
+private fun parseMarkdownBold(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        val parts = text.split("**")
+        parts.forEachIndexed { index, part ->
+            if (index % 2 == 1) {
+                // Odd parts are the text inside ** **
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold, color = FjordBlue)) {
+                    append(part)
+                }
+            } else {
+                append(part)
+            }
         }
     }
 }

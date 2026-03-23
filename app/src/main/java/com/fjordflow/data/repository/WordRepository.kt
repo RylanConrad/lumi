@@ -12,7 +12,12 @@ class WordRepository(
 ) {
     fun getAllWords(): Flow<List<WordEntity>> = wordDao.getAllWords()
 
-    suspend fun saveWordAndCreateCard(word: String, context: String, translation: String) {
+    suspend fun saveWordAndCreateCard(
+        word: String,
+        context: String,
+        translation: String,
+        frontOverride: String? = null
+    ) {
         val entity = WordEntity(
             word = word,
             context = context,
@@ -22,7 +27,7 @@ class WordRepository(
         flashCardDao.insertCard(
             FlashCardEntity(
                 wordId = wordId,
-                front = word,
+                front = frontOverride ?: word,
                 back = translation
             )
         )
