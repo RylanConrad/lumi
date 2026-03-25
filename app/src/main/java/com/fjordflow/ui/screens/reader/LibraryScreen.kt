@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Book
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,34 +33,53 @@ fun LibraryScreen(
 ) {
     val uiState by vm.libraryState.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+    var showScanner by remember { mutableStateOf(false) }
+    var scannedContent by remember { mutableStateOf("") }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Library", style = MaterialTheme.typography.headlineMedium) },
-                actions = {
-                    IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Outlined.Add, contentDescription = "Add book")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+    if (showScanner) {
+        CameraScanner(
+            onTextScanned = { text ->
+                scannedContent = text
+                showScanner = false
+                showAddDialog = true
+            },
+            onDismiss = { showScanner = false }
+        )
+    } else {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Library", style = MaterialTheme.typography.headlineMedium) },
+                    actions = {
+                        IconButton(onClick = { showScanner = true }) {
+                            Icon(Icons.Outlined.CameraAlt, contentDescription = "Scan text")
+                        }
+                        IconButton(onClick = { 
+                            scannedContent = ""
+                            showAddDialog = true 
+                        }) {
+                            Icon(Icons.Outlined.Add, contentDescription = "Add book")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
                 )
-            )
-        }
-    ) { padding ->
-        if (uiState.books.isEmpty()) {
-            EmptyLibrary(modifier = Modifier.padding(padding))
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(uiState.books) { book ->
-                    BookItem(book = book, onClick = { onBookClick(book) })
+            }
+        ) { padding ->
+            if (uiState.books.isEmpty()) {
+                EmptyLibrary(modifier = Modifier.padding(padding))
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(uiState.books) { book ->
+                        BookItem(book = book, onClick = { onBookClick(book) })
+                    }
                 }
             }
         }
@@ -67,6 +87,7 @@ fun LibraryScreen(
 
     if (showAddDialog) {
         AddBookDialog(
+            initialContent = scannedContent,
             onConfirm = { title, content ->
                 vm.addBook(title, content)
                 showAddDialog = false
@@ -153,11 +174,17 @@ fun EmptyLibrary(modifier: Modifier = Modifier) {
 
 @Composable
 fun AddBookDialog(
+    initialContent: String = "",
     onConfirm: (String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var title by remember { mutableStateOf("") }
-    var content by remember { mutableStateOf("") }
+    var content by remember { mutableStateOf(initialContent) }
+
+    // Update content if initialContent changes (e.g. from scanner)
+    LaunchedEffect(initialContent) {
+        content = initialContent
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,

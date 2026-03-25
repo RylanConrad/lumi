@@ -12,8 +12,8 @@ object GeminiClient {
             modelName = "gemini-2.5-flash-lite",
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = generationConfig {
-                temperature = 0.2f
-                maxOutputTokens = 512
+                temperature = 0.1f // Lower temperature for more deterministic/factual output
+                maxOutputTokens = 2048
             }
         )
     }
@@ -27,6 +27,37 @@ object GeminiClient {
         val response = model.generateContent(prompt)
         val raw = response.text ?: throw IllegalStateException("Empty response from Gemini")
         return parseResponse(raw)
+    }
+
+    /**
+     * Uses AI to reconstruct a scanned page from messy OCR text.
+     * Specifically optimized for French book pages.
+     */
+    suspend fun reconstructPage(rawOcrText: String): String {
+        val prompt = """
+            SYSTEM: You are a professional book editor. Your task is to clean up messy OCR text from a French book page.
+            
+            INPUT TEXT:
+            $rawOcrText
+            
+            STRICT RULES:
+            1. Output ONLY the reconstructed French text. 
+            2. Do NOT include any preamble, introduction, or conversational text (e.g., do NOT say "Here is the text" or "Reconstructed text:").
+            3. Remove all page headers, footers, and page numbers.
+            4. Re-join words that were split across lines (e.g., "en-suite" becomes "ensuite").
+            5. Reconstruct the text into proper, readable paragraphs.
+            6. Fix obvious OCR character errors while preserving the original French wording.
+            7. Do NOT translate.
+            
+            FINAL CHECK: If your response contains anything other than the cleaned French text, it is a failure.
+        """.trimIndent()
+
+        val response = model.generateContent(prompt)
+        // Aggressively trim and remove common AI conversational markers just in case
+        return response.text?.trim()
+            ?.removePrefix("Voici le texte nettoyé :")
+            ?.removePrefix("Voici le texte :")
+            ?.trim() ?: rawOcrText
     }
 
     private fun buildPrompt(text: String, context: String): String {

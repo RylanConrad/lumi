@@ -72,5 +72,14 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.google.generativeai)
 
+    // CameraX
+    implementation(libs.camerax.core)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
+
+    // ML Kit Text Recognition
+    implementation(libs.mlkit.text.recognition)
+
     debugImplementation(libs.androidx.ui.tooling)
 }

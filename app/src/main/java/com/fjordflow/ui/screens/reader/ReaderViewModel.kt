@@ -4,6 +4,7 @@ import androidx.lifecycle.*
 import com.fjordflow.data.db.entity.BookEntity
 import com.fjordflow.data.repository.BookRepository
 import com.fjordflow.data.repository.WordRepository
+import com.fjordflow.data.translation.GeminiClient
 import com.fjordflow.data.translation.TranslationResult
 import com.fjordflow.data.translation.TranslationService
 import kotlinx.coroutines.flow.*
@@ -22,7 +23,8 @@ data class ReaderUiState(
     val text: String = "",
     val book: BookEntity? = null,
     val selectedWord: TranslationState? = null,
-    val isTranslating: Boolean = false
+    val isTranslating: Boolean = false,
+    val isReconstructing: Boolean = false
 )
 
 data class LibraryUiState(
@@ -55,6 +57,21 @@ class ReaderViewModel(
 
     fun updateText(newText: String) {
         _uiState.update { it.copy(text = newText) }
+    }
+
+    fun reconstructAndAddBook(title: String, rawContent: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isReconstructing = true) }
+            try {
+                val cleanContent = GeminiClient.reconstructPage(rawContent)
+                addBook(title, cleanContent)
+            } catch (e: Exception) {
+                // Fallback to raw if AI fails
+                addBook(title, rawContent)
+            } finally {
+                _uiState.update { it.copy(isReconstructing = false) }
+            }
+        }
     }
 
     fun addBook(title: String, content: String) {
