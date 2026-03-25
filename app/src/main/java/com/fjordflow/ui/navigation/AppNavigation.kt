@@ -15,10 +15,12 @@ import androidx.navigation.compose.*
 import com.fjordflow.data.db.AppDatabase
 import com.fjordflow.data.repository.BookRepository
 import com.fjordflow.data.repository.FlashCardRepository
+import com.fjordflow.data.repository.PageRepository
 import com.fjordflow.data.repository.RoadmapRepository
 import com.fjordflow.data.repository.WordRepository
 import com.fjordflow.ui.screens.flashcards.FlashcardsScreen
 import com.fjordflow.ui.screens.flashcards.FlashcardsViewModel
+import com.fjordflow.ui.screens.reader.BookDetailScreen
 import com.fjordflow.ui.screens.reader.LibraryScreen
 import com.fjordflow.ui.screens.reader.ReaderScreen
 import com.fjordflow.ui.screens.reader.ReaderViewModel
@@ -27,6 +29,7 @@ import com.fjordflow.ui.screens.roadmap.RoadmapViewModel
 
 sealed class NavRoute(val route: String, val label: String, val icon: ImageVector) {
     object Library    : NavRoute("library",    "Library",    Icons.Outlined.AutoStories)
+    object BookDetail : NavRoute("bookDetail", "Book",       Icons.Outlined.Book)
     object Reader     : NavRoute("reader",     "Reader",     Icons.Outlined.Book)
     object Flashcards : NavRoute("flashcards", "Flashcards", Icons.Outlined.Style)
     object Roadmap    : NavRoute("roadmap",    "Roadmap",    Icons.Outlined.Map)
@@ -38,14 +41,14 @@ private val navItems = listOf(NavRoute.Library, NavRoute.Flashcards, NavRoute.Ro
 fun AppNavigation(db: AppDatabase) {
     val navController = rememberNavController()
 
-    val wordRepo      = remember { WordRepository(db.wordDao(), db.flashCardDao()) }
-    val cardRepo      = remember { FlashCardRepository(db.flashCardDao()) }
-    val roadmapRepo   = remember { RoadmapRepository(db.roadmapDao()) }
-    val bookRepo      = remember { BookRepository(db.bookDao()) }
+    val wordRepo    = remember { WordRepository(db.wordDao(), db.flashCardDao()) }
+    val cardRepo    = remember { FlashCardRepository(db.flashCardDao()) }
+    val roadmapRepo = remember { RoadmapRepository(db.roadmapDao()) }
+    val bookRepo    = remember { BookRepository(db.bookDao()) }
+    val pageRepo    = remember { PageRepository(db.pageDao()) }
 
-    // Create a shared ReaderViewModel for both Library and Reader screens
     val readerVm: ReaderViewModel = viewModel(
-        factory = ReaderViewModel.Factory(wordRepo, bookRepo)
+        factory = ReaderViewModel.Factory(wordRepo, bookRepo, pageRepo)
     )
 
     Scaffold(
@@ -93,9 +96,19 @@ fun AppNavigation(db: AppDatabase) {
                 LibraryScreen(
                     vm = readerVm,
                     onBookClick = { book ->
-                        readerVm.openBook(book)
-                        navController.navigate(NavRoute.Reader.route)
+                        readerVm.selectBook(book)
+                        navController.navigate(NavRoute.BookDetail.route)
                     }
+                )
+            }
+            composable(NavRoute.BookDetail.route) {
+                BookDetailScreen(
+                    vm = readerVm,
+                    onPageClick = { page ->
+                        readerVm.openPage(page)
+                        navController.navigate(NavRoute.Reader.route)
+                    },
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable(NavRoute.Reader.route) {

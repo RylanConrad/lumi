@@ -9,10 +9,12 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.fjordflow.data.db.dao.BookDao
 import com.fjordflow.data.db.dao.FlashCardDao
+import com.fjordflow.data.db.dao.PageDao
 import com.fjordflow.data.db.dao.RoadmapDao
 import com.fjordflow.data.db.dao.WordDao
 import com.fjordflow.data.db.entity.BookEntity
 import com.fjordflow.data.db.entity.FlashCardEntity
+import com.fjordflow.data.db.entity.PageEntity
 import com.fjordflow.data.db.entity.RoadmapNodeEntity
 import com.fjordflow.data.db.entity.WordEntity
 import com.fjordflow.data.seed.frenchRoadmapNodes
@@ -21,8 +23,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [WordEntity::class, FlashCardEntity::class, RoadmapNodeEntity::class, BookEntity::class],
-    version = 2,
+    entities = [WordEntity::class, FlashCardEntity::class, RoadmapNodeEntity::class, BookEntity::class, PageEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -31,23 +33,28 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun flashCardDao(): FlashCardDao
     abstract fun roadmapDao(): RoadmapDao
     abstract fun bookDao(): BookDao
+    abstract fun pageDao(): PageDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
 
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("""
-                    CREATE TABLE IF NOT EXISTS `books` (
-                        `id` INTEGER PRIMARY KEY AUTO_INCREMENT NOT NULL, 
-                        `title` TEXT NOT NULL, 
-                        `author` TEXT NOT NULL, 
-                        `content` TEXT NOT NULL, 
-                        `type` TEXT NOT NULL, 
-                        `progress` REAL NOT NULL, 
-                        `addedAt` INTEGER NOT NULL, 
-                        `lastReadAt` INTEGER NOT NULL
+                    CREATE TABLE IF NOT EXISTS `pages` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `bookId` INTEGER NOT NULL,
+                        `pageNumber` INTEGER NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `addedAt` INTEGER NOT NULL,
+                        FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON DELETE CASCADE
                     )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_pages_bookId` ON `pages` (`bookId`)")
+                // Migrate existing book content into pages
+                db.execSQL("""
+                    INSERT INTO pages (bookId, pageNumber, content, addedAt)
+                    SELECT id, 1, content, addedAt FROM books WHERE content != ''
                 """.trimIndent())
             }
         }
@@ -59,11 +66,11 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "fjordflow.db"
                 )
-                .fallbackToDestructiveMigration() // Simpler for development
+                .addMigrations(MIGRATION_2_3)
+                .fallbackToDestructiveMigration()
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
-                        // Seed the roadmap on first launch
                         CoroutineScope(Dispatchers.IO).launch {
                             INSTANCE?.roadmapDao()?.insertNodes(frenchRoadmapNodes)
                         }

@@ -1,7 +1,9 @@
 package com.fjordflow.data.translation
 
+import android.graphics.Bitmap
 import com.fjordflow.BuildConfig
 import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.generationConfig
 import org.json.JSONObject
 
@@ -12,10 +14,47 @@ object GeminiClient {
             modelName = "gemini-2.5-flash-lite",
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = generationConfig {
-                temperature = 0.1f // Lower temperature for more deterministic/factual output
+                temperature = 0.1f
                 maxOutputTokens = 2048
             }
         )
+    }
+
+    private val visionModel by lazy {
+        GenerativeModel(
+            modelName = "gemini-2.5-flash-lite",
+            apiKey = BuildConfig.GEMINI_API_KEY,
+            generationConfig = generationConfig {
+                temperature = 0.0f
+                maxOutputTokens = 4096
+            }
+        )
+    }
+
+    /**
+     * Extracts text from a book page image using Gemini Vision.
+     * Handles curved pages, varied lighting, and complex layouts naturally —
+     * things traditional OCR cannot reliably do.
+     */
+    suspend fun scanPage(bitmap: Bitmap): String {
+        val prompt = """
+            Extract all the text from this book page exactly as written.
+            Rules:
+            - Output ONLY the extracted text, nothing else.
+            - Preserve reading order (top to bottom, left to right).
+            - Separate paragraphs with a single blank line.
+            - Do NOT translate or modify the text in any way.
+            - Ignore page numbers, chapter headers, and running titles at the top/bottom edges.
+            - Re-join any words hyphenated at line breaks (e.g. "connais-↵sance" → "connaissance").
+        """.trimIndent()
+
+        val response = visionModel.generateContent(
+            content {
+                image(bitmap)
+                text(prompt)
+            }
+        )
+        return response.text?.trim() ?: ""
     }
 
     suspend fun translate(text: String, context: String): TranslationResult {

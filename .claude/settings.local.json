@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:blog.blundellapps.co.uk)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:reducto.ai)",
+      "WebFetch(domain:scanbot.io)",
+      "WebFetch(domain:answers.opencv.org)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:blog.tensorflow.org)"
+    ]
+  }
+}

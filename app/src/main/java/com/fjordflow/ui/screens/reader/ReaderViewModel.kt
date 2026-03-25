@@ -2,9 +2,10 @@ package com.fjordflow.ui.screens.reader
 
 import androidx.lifecycle.*
 import com.fjordflow.data.db.entity.BookEntity
+import com.fjordflow.data.db.entity.PageEntity
 import com.fjordflow.data.repository.BookRepository
+import com.fjordflow.data.repository.PageRepository
 import com.fjordflow.data.repository.WordRepository
-import com.fjordflow.data.translation.GeminiClient
 import com.fjordflow.data.translation.TranslationResult
 import com.fjordflow.data.translation.TranslationService
 import kotlinx.coroutines.flow.*
@@ -21,10 +22,9 @@ data class TranslationState(
 
 data class ReaderUiState(
     val text: String = "",
-    val book: BookEntity? = null,
+    val pageTitle: String = "",
     val selectedWord: TranslationState? = null,
-    val isTranslating: Boolean = false,
-    val isReconstructing: Boolean = false
+    val isTranslating: Boolean = false
 )
 
 data class LibraryUiState(
@@ -32,9 +32,15 @@ data class LibraryUiState(
     val isLoading: Boolean = false
 )
 
+data class BookDetailUiState(
+    val book: BookEntity? = null,
+    val pages: List<PageEntity> = emptyList()
+)
+
 class ReaderViewModel(
     private val wordRepo: WordRepository,
-    private val bookRepo: BookRepository
+    private val bookRepo: BookRepository,
+    private val pageRepo: PageRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReaderUiState())
@@ -44,50 +50,56 @@ class ReaderViewModel(
         .map { LibraryUiState(books = it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LibraryUiState(isLoading = true))
 
-    fun openBook(book: BookEntity) {
-        _uiState.update { it.copy(book = book, text = book.content) }
-        viewModelScope.launch {
-            bookRepo.updateBook(book.copy(lastReadAt = System.currentTimeMillis()))
+    private val _selectedBook = MutableStateFlow<BookEntity?>(null)
+
+    val bookDetailState: StateFlow<BookDetailUiState> = _selectedBook
+        .flatMapLatest { book ->
+            if (book == null) flowOf(BookDetailUiState())
+            else pageRepo.getPagesForBook(book.id)
+                .map { pages -> BookDetailUiState(book = book, pages = pages) }
         }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BookDetailUiState())
+
+    fun selectBook(book: BookEntity) {
+        _selectedBook.value = book
     }
 
-    fun closeBook() {
-        _uiState.update { it.copy(book = null, text = "") }
+    fun openPage(page: PageEntity) {
+        val book = _selectedBook.value
+        _uiState.update {
+            it.copy(
+                text = page.content,
+                pageTitle = if (book != null) "Page ${page.pageNumber}" else ""
+            )
+        }
     }
 
     fun updateText(newText: String) {
         _uiState.update { it.copy(text = newText) }
     }
 
-    fun reconstructAndAddBook(title: String, rawContent: String) {
+    fun createBook(title: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isReconstructing = true) }
-            try {
-                val cleanContent = GeminiClient.reconstructPage(rawContent)
-                addBook(title, cleanContent)
-            } catch (e: Exception) {
-                // Fallback to raw if AI fails
-                addBook(title, rawContent)
-            } finally {
-                _uiState.update { it.copy(isReconstructing = false) }
-            }
+            bookRepo.insertBook(BookEntity(title = title))
         }
     }
 
-    fun addBook(title: String, content: String) {
+    fun deleteBook(book: BookEntity) {
         viewModelScope.launch {
-            val type = when {
-                content.startsWith("%PDF") -> "PDF"
-                content.contains("mimetypeapplication/epub+zip") -> "EPUB"
-                else -> "TEXT"
-            }
-            bookRepo.insertBook(
-                BookEntity(
-                    title = title,
-                    content = content,
-                    type = type
-                )
-            )
+            bookRepo.deleteBook(book)
+        }
+    }
+
+    fun addPage(bookId: Int, content: String) {
+        viewModelScope.launch {
+            val nextPageNum = (pageRepo.getMaxPageNumber(bookId) ?: 0) + 1
+            pageRepo.insertPage(PageEntity(bookId = bookId, pageNumber = nextPageNum, content = content))
+        }
+    }
+
+    fun deletePage(page: PageEntity) {
+        viewModelScope.launch {
+            pageRepo.deletePage(page)
         }
     }
 
@@ -98,11 +110,7 @@ class ReaderViewModel(
             _uiState.update {
                 it.copy(
                     isTranslating = false,
-                    selectedWord = TranslationState(
-                        word = word,
-                        context = sentenceContext,
-                        result = result
-                    )
+                    selectedWord = TranslationState(word = word, context = sentenceContext, result = result)
                 )
             }
         }
@@ -133,7 +141,7 @@ class ReaderViewModel(
     fun saveToFlashcards() {
         val state = _uiState.value.selectedWord ?: return
         _uiState.update { it.copy(selectedWord = state.copy(isSaving = true)) }
-        
+
         val frontText = if (state.sourceWord != null && state.word.contains(state.sourceWord, ignoreCase = true)) {
             val regex = Regex("(${Regex.escape(state.sourceWord)})", RegexOption.IGNORE_CASE)
             state.word.replace(regex, "**$1**")
@@ -149,10 +157,11 @@ class ReaderViewModel(
 
     class Factory(
         private val wordRepo: WordRepository,
-        private val bookRepo: BookRepository
+        private val bookRepo: BookRepository,
+        private val pageRepo: PageRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ReaderViewModel(wordRepo, bookRepo) as T
+            ReaderViewModel(wordRepo, bookRepo, pageRepo) as T
     }
 }
