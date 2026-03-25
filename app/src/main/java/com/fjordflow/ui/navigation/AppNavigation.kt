@@ -8,36 +8,45 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
 import com.fjordflow.data.db.AppDatabase
+import com.fjordflow.data.repository.BookRepository
 import com.fjordflow.data.repository.FlashCardRepository
 import com.fjordflow.data.repository.RoadmapRepository
 import com.fjordflow.data.repository.WordRepository
 import com.fjordflow.ui.screens.flashcards.FlashcardsScreen
 import com.fjordflow.ui.screens.flashcards.FlashcardsViewModel
+import com.fjordflow.ui.screens.reader.LibraryScreen
 import com.fjordflow.ui.screens.reader.ReaderScreen
 import com.fjordflow.ui.screens.reader.ReaderViewModel
 import com.fjordflow.ui.screens.roadmap.RoadmapScreen
 import com.fjordflow.ui.screens.roadmap.RoadmapViewModel
 
 sealed class NavRoute(val route: String, val label: String, val icon: ImageVector) {
-    object Reader     : NavRoute("reader",     "Reader",     Icons.Outlined.AutoStories)
+    object Library    : NavRoute("library",    "Library",    Icons.Outlined.AutoStories)
+    object Reader     : NavRoute("reader",     "Reader",     Icons.Outlined.Book)
     object Flashcards : NavRoute("flashcards", "Flashcards", Icons.Outlined.Style)
     object Roadmap    : NavRoute("roadmap",    "Roadmap",    Icons.Outlined.Map)
 }
 
-private val navItems = listOf(NavRoute.Reader, NavRoute.Flashcards, NavRoute.Roadmap)
+private val navItems = listOf(NavRoute.Library, NavRoute.Flashcards, NavRoute.Roadmap)
 
 @Composable
 fun AppNavigation(db: AppDatabase) {
     val navController = rememberNavController()
 
-    // Repositories (in a real app, inject via Hilt/Koin)
     val wordRepo      = remember { WordRepository(db.wordDao(), db.flashCardDao()) }
     val cardRepo      = remember { FlashCardRepository(db.flashCardDao()) }
     val roadmapRepo   = remember { RoadmapRepository(db.roadmapDao()) }
+    val bookRepo      = remember { BookRepository(db.bookDao()) }
+
+    // Create a shared ReaderViewModel for both Library and Reader screens
+    val readerVm: ReaderViewModel = viewModel(
+        factory = ReaderViewModel.Factory(wordRepo, bookRepo)
+    )
 
     Scaffold(
         bottomBar = {
@@ -73,27 +82,33 @@ fun AppNavigation(db: AppDatabase) {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = NavRoute.Reader.route,
+            startDestination = NavRoute.Library.route,
             modifier = Modifier.padding(innerPadding),
             enterTransition  = { fadeIn() + slideInHorizontally() },
             exitTransition   = { fadeOut() },
             popEnterTransition  = { fadeIn() },
             popExitTransition   = { fadeOut() + slideOutHorizontally() }
         ) {
-            composable(NavRoute.Reader.route) {
-                val vm = androidx.lifecycle.viewmodel.compose.viewModel<ReaderViewModel>(
-                    factory = ReaderViewModel.Factory(wordRepo)
+            composable(NavRoute.Library.route) {
+                LibraryScreen(
+                    vm = readerVm,
+                    onBookClick = { book ->
+                        readerVm.openBook(book)
+                        navController.navigate(NavRoute.Reader.route)
+                    }
                 )
-                ReaderScreen(vm)
+            }
+            composable(NavRoute.Reader.route) {
+                ReaderScreen(readerVm, onBack = { navController.popBackStack() })
             }
             composable(NavRoute.Flashcards.route) {
-                val vm = androidx.lifecycle.viewmodel.compose.viewModel<FlashcardsViewModel>(
+                val vm = viewModel<FlashcardsViewModel>(
                     factory = FlashcardsViewModel.Factory(cardRepo)
                 )
                 FlashcardsScreen(vm)
             }
             composable(NavRoute.Roadmap.route) {
-                val vm = androidx.lifecycle.viewmodel.compose.viewModel<RoadmapViewModel>(
+                val vm = viewModel<RoadmapViewModel>(
                     factory = RoadmapViewModel.Factory(roadmapRepo)
                 )
                 RoadmapScreen(vm)
