@@ -1,19 +1,13 @@
 package com.fjordflow.ui.screens.reader
 
 import androidx.lifecycle.*
+import com.fjordflow.data.db.entity.BookEntity
+import com.fjordflow.data.repository.BookRepository
 import com.fjordflow.data.repository.WordRepository
 import com.fjordflow.data.translation.TranslationResult
 import com.fjordflow.data.translation.TranslationService
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-
-private val DEFAULT_TEXT = """
-Le soleil se couchait sur les montagnes quand Marie décida de partir. Elle prit son manteau, ferma la porte à clé, et marcha vers la gare. La ville était silencieuse à cette heure-là, et ses pas résonnaient sur les pavés froids.
-
-Dans sa poche, elle avait une lettre — une lettre qu'elle n'avait jamais eu le courage d'envoyer. Elle la porta à ses lèvres, puis la glissa dans la première boîte aux lettres qu'elle trouva.
-
-Il était temps de recommencer.
-""".trimIndent()
 
 data class TranslationState(
     val word: String = "",
@@ -21,22 +15,63 @@ data class TranslationState(
     val result: TranslationResult = TranslationResult(""),
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
-    val sourceWord: String? = null // Store the original word if a sentence was translated
+    val sourceWord: String? = null
 )
 
 data class ReaderUiState(
-    val text: String = DEFAULT_TEXT,
+    val text: String = "",
+    val book: BookEntity? = null,
     val selectedWord: TranslationState? = null,
     val isTranslating: Boolean = false
 )
 
-class ReaderViewModel(private val repo: WordRepository) : ViewModel() {
+data class LibraryUiState(
+    val books: List<BookEntity> = emptyList(),
+    val isLoading: Boolean = false
+)
+
+class ReaderViewModel(
+    private val wordRepo: WordRepository,
+    private val bookRepo: BookRepository
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
+    val libraryState: StateFlow<LibraryUiState> = bookRepo.getAllBooks()
+        .map { LibraryUiState(books = it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LibraryUiState(isLoading = true))
+
+    fun openBook(book: BookEntity) {
+        _uiState.update { it.copy(book = book, text = book.content) }
+        viewModelScope.launch {
+            bookRepo.updateBook(book.copy(lastReadAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun closeBook() {
+        _uiState.update { it.copy(book = null, text = "") }
+    }
+
     fun updateText(newText: String) {
         _uiState.update { it.copy(text = newText) }
+    }
+
+    fun addBook(title: String, content: String) {
+        viewModelScope.launch {
+            val type = when {
+                content.startsWith("%PDF") -> "PDF"
+                content.contains("mimetypeapplication/epub+zip") -> "EPUB"
+                else -> "TEXT"
+            }
+            bookRepo.insertBook(
+                BookEntity(
+                    title = title,
+                    content = content,
+                    type = type
+                )
+            )
+        }
     }
 
     fun onWordTapped(word: String, sentenceContext: String) {
@@ -82,24 +117,25 @@ class ReaderViewModel(private val repo: WordRepository) : ViewModel() {
         val state = _uiState.value.selectedWord ?: return
         _uiState.update { it.copy(selectedWord = state.copy(isSaving = true)) }
         
-        // Bold the word if it's a sentence translation
         val frontText = if (state.sourceWord != null && state.word.contains(state.sourceWord, ignoreCase = true)) {
-            // Simple replacement to bold the specific word in the sentence for the flashcard
             val regex = Regex("(${Regex.escape(state.sourceWord)})", RegexOption.IGNORE_CASE)
             state.word.replace(regex, "**$1**")
         } else {
-            "**${state.word}**" // Bold the single word
+            "**${state.word}**"
         }
 
         viewModelScope.launch {
-            repo.saveWordAndCreateCard(state.word, state.context, state.result.translation, frontOverride = frontText)
+            wordRepo.saveWordAndCreateCard(state.word, state.context, state.result.translation, frontOverride = frontText)
             _uiState.update { it.copy(selectedWord = state.copy(isSaving = false, isSaved = true)) }
         }
     }
 
-    class Factory(private val repo: WordRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val wordRepo: WordRepository,
+        private val bookRepo: BookRepository
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ReaderViewModel(repo) as T
+            ReaderViewModel(wordRepo, bookRepo) as T
     }
 }
