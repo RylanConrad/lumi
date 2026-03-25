@@ -10,13 +10,13 @@ interface FlashCardDao {
     fun getAllCards(): Flow<List<FlashCardEntity>>
 
     @Query("SELECT * FROM flashcards WHERE dueDate <= :now ORDER BY dueDate ASC")
-    fun getDueCards(now: Long = System.currentTimeMillis()): Flow<List<FlashCardEntity>>
+    fun getDueCards(now: Long): Flow<List<FlashCardEntity>>
 
     @Query("SELECT COUNT(*) FROM flashcards")
     fun getTotalCount(): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM flashcards WHERE dueDate <= :now")
-    fun getDueCount(now: Long = System.currentTimeMillis()): Flow<Int>
+    fun getDueCount(now: Long): Flow<Int>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCard(card: FlashCardEntity): Long

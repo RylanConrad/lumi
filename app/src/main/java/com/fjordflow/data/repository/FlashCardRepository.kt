@@ -2,7 +2,11 @@ package com.fjordflow.data.repository
 
 import com.fjordflow.data.db.dao.FlashCardDao
 import com.fjordflow.data.db.entity.FlashCardEntity
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -10,46 +14,72 @@ enum class ReviewQuality { AGAIN, HARD, GOOD, EASY }
 
 class FlashCardRepository(private val dao: FlashCardDao) {
 
+    /**
+     * Emits the current timestamp every 30 seconds to refresh "due" status
+     */
+    private val timerFlow = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(30_000)
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getDueCards(): Flow<List<FlashCardEntity>> =
-        dao.getDueCards(System.currentTimeMillis())
+        timerFlow.flatMapLatest { now -> dao.getDueCards(now) }
 
     fun getAllCards(): Flow<List<FlashCardEntity>> = dao.getAllCards()
     fun getTotalCount(): Flow<Int> = dao.getTotalCount()
-    fun getDueCount(): Flow<Int> = dao.getDueCount(System.currentTimeMillis())
+    
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun getDueCount(): Flow<Int> = 
+        timerFlow.flatMapLatest { now -> dao.getDueCount(now) }
 
     suspend fun reviewCard(card: FlashCardEntity, quality: ReviewQuality) {
         dao.updateCard(applySmTwo(card, quality))
     }
 
-    /**
-     * Simplified SM-2 algorithm.
-     * AGAIN → reset to 1 day; HARD → 1.2x; GOOD → easeFactor * interval; EASY → 1.3 * easeFactor * interval
-     */
     private fun applySmTwo(card: FlashCardEntity, quality: ReviewQuality): FlashCardEntity {
         val newEase = when (quality) {
             ReviewQuality.AGAIN -> max(1.3f, card.easeFactor - 0.2f)
             ReviewQuality.HARD  -> max(1.3f, card.easeFactor - 0.15f)
             ReviewQuality.GOOD  -> card.easeFactor
-            ReviewQuality.EASY  -> card.easeFactor + 0.1f
+            ReviewQuality.EASY  -> card.easeFactor + 0.15f
         }
-        val newInterval = when (quality) {
-            ReviewQuality.AGAIN -> 1
-            ReviewQuality.HARD  -> max(1, (card.intervalDays * 1.2f).roundToInt())
-            ReviewQuality.GOOD  -> when (card.reviewCount) {
-                0 -> 1
-                1 -> 6
-                else -> (card.intervalDays * card.easeFactor).roundToInt()
+
+        val newIntervalDays: Int
+        val dueDateMs: Long
+
+        when (quality) {
+            ReviewQuality.AGAIN -> {
+                newIntervalDays = 1
+                dueDateMs = System.currentTimeMillis() + 60_000L 
             }
-            ReviewQuality.EASY  -> when (card.reviewCount) {
-                0 -> 4
-                else -> (card.intervalDays * card.easeFactor * 1.3f).roundToInt()
+            ReviewQuality.HARD -> {
+                newIntervalDays = max(1, (card.intervalDays * 1.2f).roundToInt())
+                dueDateMs = System.currentTimeMillis() + newIntervalDays.toLong() * 86_400_000L
+            }
+            ReviewQuality.GOOD -> {
+                newIntervalDays = when (card.reviewCount) {
+                    0 -> 1
+                    1 -> 6
+                    else -> (card.intervalDays * card.easeFactor).roundToInt()
+                }
+                dueDateMs = System.currentTimeMillis() + newIntervalDays.toLong() * 86_400_000L
+            }
+            ReviewQuality.EASY -> {
+                newIntervalDays = when (card.reviewCount) {
+                    0 -> 4
+                    else -> (card.intervalDays * card.easeFactor * 1.3f).roundToInt()
+                }
+                dueDateMs = System.currentTimeMillis() + newIntervalDays.toLong() * 86_400_000L
             }
         }
-        val dueDate = System.currentTimeMillis() + newInterval.toLong() * 86_400_000L
+
         return card.copy(
             easeFactor = newEase,
-            intervalDays = newInterval,
-            dueDate = dueDate,
+            intervalDays = newIntervalDays,
+            dueDate = dueDateMs,
             reviewCount = card.reviewCount + 1
         )
     }
