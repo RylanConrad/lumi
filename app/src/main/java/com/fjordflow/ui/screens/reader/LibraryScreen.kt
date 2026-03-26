@@ -1,5 +1,10 @@
 package com.fjordflow.ui.screens.reader
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -10,11 +15,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Book
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,16 +36,52 @@ fun LibraryScreen(
     onBookClick: (BookEntity) -> Unit
 ) {
     val uiState by vm.libraryState.collectAsState()
-    var showAddDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    var showMenu by remember { mutableStateOf(false) }
+    var showNewBookDialog by remember { mutableStateOf(false) }
     var bookToDelete by remember { mutableStateOf<BookEntity?>(null) }
+
+    // PDF import state
+    var pendingPdfUri by remember { mutableStateOf<Uri?>(null) }
+    var showPdfDialog by remember { mutableStateOf(false) }
+
+    val pdfLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            pendingPdfUri = uri
+            showPdfDialog = true
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Library", style = MaterialTheme.typography.headlineMedium) },
                 actions = {
-                    IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Outlined.Add, contentDescription = "New book")
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Outlined.Add, contentDescription = "Add")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("New Book") },
+                                leadingIcon = { Icon(Icons.Outlined.Book, contentDescription = null) },
+                                onClick = { showMenu = false; showNewBookDialog = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Import PDF") },
+                                leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    pdfLauncher.launch(arrayOf("application/pdf"))
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -68,13 +111,41 @@ fun LibraryScreen(
         }
     }
 
-    if (showAddDialog) {
+    if (showNewBookDialog) {
         NewBookDialog(
             onConfirm = { title ->
                 vm.createBook(title)
-                showAddDialog = false
+                showNewBookDialog = false
             },
-            onDismiss = { showAddDialog = false }
+            onDismiss = { showNewBookDialog = false }
+        )
+    }
+
+    // PDF import: show title dialog pre-filled with the filename
+    if (showPdfDialog && pendingPdfUri != null) {
+        val uri = pendingPdfUri!!
+        val suggestedTitle = remember(uri) {
+            context.contentResolver.query(
+                uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0).removeSuffix(".pdf") else ""
+            } ?: ""
+        }
+        PdfImportDialog(
+            suggestedTitle = suggestedTitle,
+            onConfirm = { title ->
+                // Keep read access to this URI across app restarts
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                vm.importPdf(uri = uri, title = title, onReady = { book -> onBookClick(book) })
+                showPdfDialog = false
+                pendingPdfUri = null
+            },
+            onDismiss = {
+                showPdfDialog = false
+                pendingPdfUri = null
+            }
         )
     }
 
@@ -163,7 +234,7 @@ fun EmptyLibrary(modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            "Tap + to create a book, then scan pages into it.",
+            "Tap + to create a book or import a PDF.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -193,6 +264,44 @@ fun NewBookDialog(
                 onClick = { if (title.isNotBlank()) onConfirm(title.trim()) },
                 enabled = title.isNotBlank()
             ) { Text("Create") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun PdfImportDialog(
+    suggestedTitle: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var title by remember { mutableStateOf(suggestedTitle) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Import PDF") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Each page will be extracted using Gemini Vision and saved as a readable page.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Book title") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (title.isNotBlank()) onConfirm(title.trim()) },
+                enabled = title.isNotBlank()
+            ) { Text("Import") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

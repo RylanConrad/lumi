@@ -145,7 +145,7 @@ fun ReaderScreen(vm: ReaderViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun TranslationSheet(
+internal fun TranslationSheet(
     state: TranslationState,
     onSave: () -> Unit,
     onDismiss: () -> Unit

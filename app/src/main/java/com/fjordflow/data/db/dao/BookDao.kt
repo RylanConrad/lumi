@@ -18,6 +18,9 @@ interface BookDao {
     @Update
     suspend fun updateBook(book: BookEntity)
 
+    @Query("UPDATE books SET lastPageIndex = :pageIndex WHERE id = :bookId")
+    suspend fun updateLastPage(bookId: Int, pageIndex: Int)
+
     @Delete
     suspend fun deleteBook(book: BookEntity)
 }

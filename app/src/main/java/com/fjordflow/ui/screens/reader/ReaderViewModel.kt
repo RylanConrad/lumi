@@ -1,15 +1,19 @@
 package com.fjordflow.ui.screens.reader
 
+import android.net.Uri
 import androidx.lifecycle.*
 import com.fjordflow.data.db.entity.BookEntity
 import com.fjordflow.data.db.entity.PageEntity
 import com.fjordflow.data.repository.BookRepository
 import com.fjordflow.data.repository.PageRepository
 import com.fjordflow.data.repository.WordRepository
+import com.fjordflow.data.translation.GeminiClient
 import com.fjordflow.data.translation.TranslationResult
 import com.fjordflow.data.translation.TranslationService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class TranslationState(
     val word: String = "",
@@ -36,6 +40,7 @@ data class BookDetailUiState(
     val book: BookEntity? = null,
     val pages: List<PageEntity> = emptyList()
 )
+
 
 class ReaderViewModel(
     private val wordRepo: WordRepository,
@@ -90,10 +95,34 @@ class ReaderViewModel(
         }
     }
 
+    /**
+     * Creates a PDF book by storing its persistent URI. Pages are rendered
+     * natively in PdfReaderScreen — no text extraction needed.
+     *
+     * [onReady] is called immediately after the book is created so the caller
+     * can navigate to PdfReaderScreen before this function returns.
+     */
+    fun importPdf(uri: Uri, title: String, onReady: (BookEntity) -> Unit) {
+        viewModelScope.launch {
+            val bookId = withContext(Dispatchers.IO) {
+                bookRepo.insertBook(BookEntity(title = title, sourceUri = uri.toString())).toInt()
+            }
+            val book = BookEntity(id = bookId, title = title, sourceUri = uri.toString())
+            selectBook(book)
+            onReady(book)
+        }
+    }
+
     fun addPage(bookId: Int, content: String) {
         viewModelScope.launch {
             val nextPageNum = (pageRepo.getMaxPageNumber(bookId) ?: 0) + 1
             pageRepo.insertPage(PageEntity(bookId = bookId, pageNumber = nextPageNum, content = content))
+        }
+    }
+
+    fun savePageProgress(bookId: Int, pageIndex: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            bookRepo.updateLastPage(bookId, pageIndex)
         }
     }
 

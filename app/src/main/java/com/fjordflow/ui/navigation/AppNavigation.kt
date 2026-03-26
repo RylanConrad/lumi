@@ -22,6 +22,7 @@ import com.fjordflow.ui.screens.flashcards.FlashcardsScreen
 import com.fjordflow.ui.screens.flashcards.FlashcardsViewModel
 import com.fjordflow.ui.screens.reader.BookDetailScreen
 import com.fjordflow.ui.screens.reader.LibraryScreen
+import com.fjordflow.ui.screens.reader.PdfReaderScreen
 import com.fjordflow.ui.screens.reader.ReaderScreen
 import com.fjordflow.ui.screens.reader.ReaderViewModel
 import com.fjordflow.ui.screens.roadmap.RoadmapScreen
@@ -31,6 +32,7 @@ sealed class NavRoute(val route: String, val label: String, val icon: ImageVecto
     object Library    : NavRoute("library",    "Library",    Icons.Outlined.AutoStories)
     object BookDetail : NavRoute("bookDetail", "Book",       Icons.Outlined.Book)
     object Reader     : NavRoute("reader",     "Reader",     Icons.Outlined.Book)
+    object PdfReader  : NavRoute("pdfReader",  "PDF",        Icons.Outlined.Book)
     object Flashcards : NavRoute("flashcards", "Flashcards", Icons.Outlined.Style)
     object Roadmap    : NavRoute("roadmap",    "Roadmap",    Icons.Outlined.Map)
 }
@@ -97,7 +99,11 @@ fun AppNavigation(db: AppDatabase) {
                     vm = readerVm,
                     onBookClick = { book ->
                         readerVm.selectBook(book)
-                        navController.navigate(NavRoute.BookDetail.route)
+                        if (book.sourceUri != null) {
+                            navController.navigate(NavRoute.PdfReader.route)
+                        } else {
+                            navController.navigate(NavRoute.BookDetail.route)
+                        }
                     }
                 )
             }
@@ -113,6 +119,9 @@ fun AppNavigation(db: AppDatabase) {
             }
             composable(NavRoute.Reader.route) {
                 ReaderScreen(readerVm, onBack = { navController.popBackStack() })
+            }
+            composable(NavRoute.PdfReader.route) {
+                PdfReaderScreen(readerVm, onBack = { navController.popBackStack() })
             }
             composable(NavRoute.Flashcards.route) {
                 val vm = viewModel<FlashcardsViewModel>(
