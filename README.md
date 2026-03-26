@@ -13,9 +13,11 @@ A French language learning app for Android that lets you scan physical books, re
 ## Screenshots
 
 <div align="center">
-  <img src="Screenshot_20260325_195518.jpg" width="320" alt="Library screen showing a book folder" />
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="Screenshot_20260325_195524.jpg" width="320" alt="Flashcard review with sentence context" />
+  <img src="Screenshot_20260325_201042.jpg" width="270" alt="Camera scanner aimed at a book page" />
+  &nbsp;&nbsp;
+  <img src="Screenshot_20260325_201012.jpg" width="270" alt="Reader screen showing extracted French text" />
+  &nbsp;&nbsp;
+  <img src="Screenshot_20260325_195524.jpg" width="270" alt="Flashcard review with sentence context" />
 </div>
 
 ## Features
